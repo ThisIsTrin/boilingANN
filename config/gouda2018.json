@@ -1,21 +1,21 @@
 {
-    "name": "jiang2021",
-    "output_dir" : "outputs/predictions/jiang2021",
+    "name": "gouda2018",
+    "output_dir" : "outputs/predictions/gouda2018",
     "output_filename" : "ann.csv",
 
-    "exp_csv": "data/experiment/jiang2021_ex.csv",
-    "sim_csv": "data/automata/jiang2021_sim_benjamin.csv",
+    "exp_csv": "data/experiment/gouda2018_ex.csv",
+    "sim_csv": "data/automata/gouda2018_sim_benjamin.csv",
 
     "sigma": 0.0589,
     "g": 9.81,
     "rho_l": 958.0,
     "rho_v": 0.597,
 
-    "phi_deg": 76.8,
+    "phi_deg": 70,
     "k_s": 393,
     "rho_s": 8960,
     "c_ps": 385,
-    "ra": 5.0e-8,
+    "ra": 0.44e-6,
 
     "q_min_wcm2": 1.0,
     "q_max_wcm2": 150.0,

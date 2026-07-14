@@ -14,29 +14,48 @@ from matplotlib import pyplot as plt
 @dataclass
 class PredictionConfig:
 
+    name: str
+
     # Output
-    output_dir: str = "outputs/predictions"
-    output_filename: str = "jiang2021_ann.csv"
+    output_dir: str
+    output_filename: str
 
     # CSV
-    exp_csv: str = "data/experiment/jiang2021_ex.csv"
-    sim_csv: str = "data/automata/jiang2021_sim_benjamin.csv"
+    # Experimental CSV: 2 columns -> [dT, q]
+    # Simulation CSVs: 11 columns -> [dT_1 ... dT_10, q]
+    exp_csv: str
+    sim_csv: str
 
-    # Physical constants
-    sigma: float = 0.0589  # Surface tension [N/m]
-    g: float = 9.81  # Gravity [m/s^2]
-    rho_l: float = 958.0  # Liquid density [kg/m^3]
-    rho_v: float = 0.597  # Vapor density [kg/m^3]
+    k_s: float  # [W/mK]
+    rho_s: float  # [kg/m^3]
+    c_ps: float  # [J/kgK]
 
     # Surface parameters
-    phi_deg: float = 78.6  # Contact angle [degrees]
-    gamma: float = 22.21  # Roughness factor [dimensionless]
-    ra: float = 0.05e-6  # Roughness [m]
+    phi_deg: float  # Contact angle [degrees]
+    # gamma: float # Roughness factor [dimensionless]
+    ra: float  # Roughness [m]
 
     # Heat flux range
-    q_min_wcm2: float = 1.0  # Min heat flux [W/cm^2]
-    q_max_wcm2: float = 150.0  # Max heat flux [W/cm^2]
-    n_points: int = 250  # Number of points in curve
+    q_min_wcm2: float  # Min heat flux [W/cm^2]
+    q_max_wcm2: float  # Max heat flux [W/cm^2]
+    n_points: int  # Number of points in curve
+
+    # Physical constants
+    k_l: float = 0.679
+    rho_l: float = 958.4  # Liquid density [kg/m^3]
+    c_pl: float = 4216.0  # [J/kgK]
+    sigma: float = 0.0589  # Surface tension [N/m]
+    g: float = 9.81  # Gravity [m/s^2]
+    rho_v: float = 0.597  # Vapor density [kg/m^3]
+    kl: float = 0.679  # thermal conductivity of liquid [W/mK]
+    hlv: float = 2.257e6  # latent heat of vaporization [J/kg]
+    mu_l: float = 2.82e-4  # dynamic viscosity of liquid [Pa*s]
+
+    @property
+    def gamma(self):
+        return np.sqrt(
+            (self.k_s * self.rho_s * self.c_ps) / (self.k_l * self.rho_l * self.c_pl)
+        )
 
     def to_dict(self):
         return asdict(self)
@@ -60,14 +79,14 @@ def load_model(num_features):
 
 def load_utils():
     try:
+        with open("models/feature_names.json") as f:
+            feature_names = json.load(f)
+
         with open("models/scaler_x.pkl", "rb") as f:
             scaler_x = pickle.load(f)
 
         with open("models/scaler_y.pkl", "rb") as f:
             scaler_y = pickle.load(f)
-
-        with open("models/feature_names.json") as f:
-            feature_names = json.load(f)
 
         return scaler_x, scaler_y, feature_names
     except FileNotFoundError as e:
@@ -89,14 +108,60 @@ def geometric_feature(phi_deg, sigma, g, rho_l, rho_v):
     return r_d, C1, bubble_vol_factor
 
 
+def htc(q_Wcm2, dT):
+    # q / (A * (t_surface - t_bulk))
+    return q_Wcm2 / np.asarray(dT)
+
+
+def liCorreleation(dT_array, config):
+    theta_deg = max(config.phi_deg, 15.0)
+    theta_rad = np.radians(theta_deg)
+
+    ra_um = config.ra * 1e6
+
+    ca_term = (1 - np.cos(theta_rad)) ** 0.5
+    ra_term = 1 + 5.45 / ((ra_um - 3.5) ** 2 + 2.61)
+    gamma_term = config.gamma ** (-0.04)
+
+    Cs = ca_term * ra_term * gamma_term
+
+    inv_capillary_length = np.sqrt(
+        config.g * (config.rho_l - config.rho_v) / config.sigma
+    )
+
+    q_w = (
+        518503
+        * Cs
+        * config.kl**3.03
+        / (config.hlv * config.mu_l) ** 2.03
+        * inv_capillary_length
+        * dT_array**3.03
+    )
+
+    return q_w
+
+
 def feature_dataframe(
-    q_Wcm2_array, features, phi_deg, gamma, ra, r_d, C1, bubble_vol_factor
+    q_Wcm2_array,
+    features,
+    phi_deg,
+    gamma,
+    k_s,
+    rho_s,
+    c_ps,
+    ra,
+    r_d,
+    C1,
+    bubble_vol_factor,
 ):
 
     df = pd.DataFrame(
         {
             "phi": phi_deg,
             "gamma": gamma,
+            "k_s": k_s,
+            "rho_s": rho_s,
+            "c_ps": c_ps,
             "log_q": np.log10(q_Wcm2_array),
             "log_ra": np.log10(ra),
             "r_d": r_d,
@@ -142,17 +207,102 @@ def clean_for_plot(dT, q):
     return dT2[idx], q2[idx]
 
 
-def plot(exp_csv, sim_csv, output_path, output_dir):
-    df_exp = pd.read_csv(exp_csv, header=None, usecols=[0, 1], names=["dT", "q"])
-    dT_exp_p, q_exp_p = clean_for_plot(df_exp["dT"].values, df_exp["q"].values)
+def compute_rmse(dT_ann, q_ann, dT_exp, q_exp):
+    """
+    RMSE between ANN prediction and experimental data,
+    matching Eq. (31) in Kim & Kim (2020): interpolate the ANN curve
+    onto the experimental q points, then compare in heat-flux space.
+    """
+    # interpolate ANN curve (sorted by dT) onto experimental dT values
+    q_ann_interp = np.interp(dT_exp, dT_ann, q_ann)
 
-    df_sim = pd.read_csv(sim_csv, header=None)
-    dT_rep = df_sim.iloc[:, 0:10].to_numpy(dtype=float)
-    q_sim_raw = df_sim.iloc[:, 10].to_numpy(dtype=float)
-    dT_sim_p, q_sim_p = clean_for_plot(np.mean(dT_rep, axis=1), q_sim_raw)
+    rmse = np.sqrt(np.mean((q_exp - q_ann_interp) ** 2))
+    return rmse
+
+
+def compute_percent_error(dT_ann, q_ann, dT_exp, q_exp):
+    """
+    Mean absolute percentage error (MAPE) between ANN prediction
+    and experimental data, interpolated onto experimental dT points.
+    """
+    q_ann_interp = np.interp(dT_exp, dT_ann, q_ann)
+
+    pct_error = np.abs((q_exp - q_ann_interp) / q_exp) * 100
+    mape = np.mean(pct_error)
+    return mape
+
+
+def compute_rmse_htc(dT_ann, htc_ann, dT_exp, htc_exp):
+    htc_ann_interp = np.interp(dT_exp, dT_ann, htc_ann)
+    rmse = np.sqrt(np.mean((htc_exp - htc_ann_interp) ** 2))
+    return rmse
+
+
+def compute_percent_error_htc(dT_ann, htc_ann, dT_exp, htc_exp):
+    htc_ann_interp = np.interp(dT_exp, dT_ann, htc_ann)
+    pct_error = np.abs((htc_exp - htc_ann_interp) / htc_exp) * 100
+    mape = np.mean(pct_error)
+    return mape
+
+
+def plot(exp_csv, sim_csv, output_path, output_dir, config):
+    dT_exp_p = q_exp_p = htc_exp = np.array([])
+    dT_sim_p = q_sim_p = htc_sim = np.array([])
+    try:
+        df_exp = pd.read_csv(exp_csv, header=None, usecols=[0, 1], names=["dT", "q"])
+        dT_exp_p, q_exp_p = clean_for_plot(df_exp["dT"].values, df_exp["q"].values)
+
+        htc_exp = htc(q_exp_p, dT_exp_p)
+    except FileNotFoundError:
+        print("Experiment CSV not found.")
+
+    try:
+        df_sim = pd.read_csv(sim_csv, header=None)
+        dT_rep = df_sim.iloc[:, 0:10].to_numpy(dtype=float)
+        q_sim_raw = df_sim.iloc[:, 10].to_numpy(dtype=float)
+        dT_sim_p, q_sim_p = clean_for_plot(np.mean(dT_rep, axis=1), q_sim_raw)
+
+        htc_sim = htc(q_sim_p, dT_sim_p)
+    except FileNotFoundError:
+        print("Simulation CSV not found.")
 
     df_ann = pd.read_csv(output_path, header=None, usecols=[0, 1], names=["dT", "q"])
     dT_ann_p, q_ann_p = clean_for_plot(df_ann["dT"].values, df_ann["q"].values)
+    dT_li = np.linspace(dT_ann_p.min(), dT_ann_p.max(), 200)
+    q_li_Wm2 = liCorreleation(dT_li, config)
+    q_li_p = q_li_Wm2 / 1e4  # W/m² -> W/cm²
+
+    if q_exp_p.size > 0:
+        q_lo, q_hi = q_exp_p.min(), q_exp_p.max()
+
+        ann_mask = (q_ann_p >= q_lo) & (q_ann_p <= q_hi)
+        dT_ann_p = dT_ann_p[ann_mask]
+        q_ann_p = q_ann_p[ann_mask]
+        htc_ann = htc(q_ann_p, dT_ann_p)
+
+        li_mask = (q_li_p >= q_lo) & (q_li_p <= q_hi)
+        dT_li = dT_li[li_mask]
+        q_li_p = q_li_p[li_mask]
+
+        if q_sim_p.size > 0:
+            sim_mask = (q_sim_p >= q_lo) & (q_sim_p <= q_hi)
+            dT_sim_p = dT_sim_p[sim_mask]
+            q_sim_p = q_sim_p[sim_mask]
+            htc_sim = htc(q_sim_p, dT_sim_p)
+
+    htc_ann = htc(q_ann_p, dT_ann_p)
+
+    htc_li = htc(q_li_p, dT_li)
+
+    if np.size(dT_exp_p) > 1 and np.size(dT_ann_p) > 1:
+        rmse = compute_rmse(dT_ann_p, q_ann_p, dT_exp_p, q_exp_p)
+        mape = compute_percent_error(dT_ann_p, q_ann_p, dT_exp_p, q_exp_p)
+        print(f"RMSE q ({config.name}): {rmse:.2f} W/cm^2")
+        print(f"MAPE q ({config.name}): {mape:.2f}%")
+        rmse_htc = compute_rmse_htc(dT_ann_p, htc_ann, dT_exp_p, htc_exp)
+        mape_htc = compute_percent_error_htc(dT_ann_p, htc_ann, dT_exp_p, htc_exp)
+        print(f"RMSE htc ({config.name}): {rmse_htc:.4f} W/(cm^2 K)")
+        print(f"MAPE htc ({config.name}): {mape_htc:.2f}%")
 
     COLORS = {
         "exp": "#1a1a2e",
@@ -163,7 +313,6 @@ def plot(exp_csv, sim_csv, output_path, output_dir):
     fig, ax = plt.subplots(figsize=(6.0, 4.8))
     fig.patch.set_facecolor("#fafaf8")
     ax.set_facecolor("#fafaf8")
-
     # Experiment
     ax.scatter(
         dT_exp_p,
@@ -174,7 +323,7 @@ def plot(exp_csv, sim_csv, output_path, output_dir):
         marker="o",
         linewidths=0.4,
         edgecolors="white",
-        label="Experiment (Jiang 2021)",
+        label="Experiment (" + config.name + ")",
     )
 
     # Automata simulation
@@ -188,6 +337,15 @@ def plot(exp_csv, sim_csv, output_path, output_dir):
         linewidths=0.4,
         edgecolors="white",
         label="Automata simulation",
+    )
+
+    ax.plot(
+        dT_li,
+        q_li_p,
+        color="#8b3a9e",
+        linewidth=2.0,
+        zorder=6,
+        label="Li et al. (2014)",
     )
 
     # ANN prediction — line + light fill for confidence feel
@@ -222,8 +380,108 @@ def plot(exp_csv, sim_csv, output_path, output_dir):
         loc="upper left",
     )
 
+    ax.text(
+        0.98,
+        0.02,
+        rf"$\phi$:{config.phi_deg}, $k_s$:{config.k_s}, $\rho_s$:{config.rho_s}, $c_{'{'}p,s{'}'}$:{config.c_ps}, ra:{config.ra}",
+        transform=ax.transAxes,
+        ha="right",
+        va="bottom",
+        fontsize=8,
+        family="monospace",
+        bbox=dict(facecolor="white", alpha=0.8, edgecolor="gray"),
+    )
+
     plt.savefig(
-        Path(output_dir) / "loglog.jpg",
+        Path(output_dir) / "qvsdT.jpg",
+        dpi=200,
+        bbox_inches="tight",
+        facecolor=fig.get_facecolor(),
+    )
+
+    fig, ax = plt.subplots(figsize=(6.0, 4.8))
+    fig.patch.set_facecolor("#fafaf8")
+    ax.set_facecolor("#fafaf8")
+
+    # Experiment
+    ax.scatter(
+        q_exp_p,
+        htc_exp,
+        color=COLORS["exp"],
+        s=28,
+        zorder=4,
+        marker="o",
+        linewidths=0.4,
+        edgecolors="white",
+        label="Experiment (" + config.name + ")",
+    )
+
+    # Automata simulation
+    ax.scatter(
+        q_sim_p,
+        htc_sim,
+        color=COLORS["sim"],
+        s=28,
+        zorder=3,
+        marker="s",
+        linewidths=0.4,
+        edgecolors="white",
+        label="Automata simulation",
+    )
+
+    ax.plot(
+        q_li_p,
+        htc_li,
+        color="#8b3a9e",
+        linewidth=2.0,
+        zorder=6,
+        label="Li et al. (2014)",
+    )
+
+    # ANN prediction — line + light fill for confidence feel
+    ax.plot(
+        q_ann_p,
+        htc_ann,
+        color=COLORS["ann"],
+        linewidth=2.0,
+        zorder=5,
+        label="ANN",
+        solid_capstyle="round",
+    )
+    ax.fill_between(
+        q_ann_p,
+        htc_ann * 0.85,
+        htc_ann * 1.15,
+        color=COLORS["ann"],
+        alpha=0.10,
+        zorder=2,
+        label="ANN ±15%",
+    )
+
+    ax.set_xscale("log")
+    ax.set_yscale("log")
+
+    ax.set_ylabel(r"HTC (W cm$^{-2}$K$^{-1}$) ", labelpad=7)
+    ax.set_xlabel(r"Heat flux, $q''$ (W cm$^{-2}$)", labelpad=7)
+
+    ax.tick_params(which="both", top=True, right=True)
+
+    ax.legend()
+
+    ax.text(
+        0.98,
+        0.02,
+        rf"$\phi$:{config.phi_deg}, $k_s$:{config.k_s}, $\rho_s$:{config.rho_s}, $c_{'{'}p,s{'}'}$:{config.c_ps}, ra:{config.ra}",
+        transform=ax.transAxes,
+        ha="right",
+        va="bottom",
+        fontsize=8,
+        family="monospace",
+        bbox=dict(facecolor="white", alpha=0.8, edgecolor="gray"),
+    )
+
+    plt.savefig(
+        Path(output_dir) / "htcvsq.jpg",
         dpi=200,
         bbox_inches="tight",
         facecolor=fig.get_facecolor(),
@@ -253,11 +511,25 @@ def generate_boiling_curve(config: PredictionConfig):
         np.log10(config.q_min_wcm2), np.log10(config.q_max_wcm2), config.n_points
     )
 
+    # feature_df = feature_dataframe(
+    #     q_Wcm2_array,
+    #     feature_names,
+    #     config.phi_deg,
+    #     config.gamma,
+    #     config.ra,
+    #     r_d,
+    #     C1,
+    #     bubble_vol_factor,
+    # )
+
     feature_df = feature_dataframe(
         q_Wcm2_array,
         feature_names,
         config.phi_deg,
         config.gamma,
+        config.k_s,
+        config.rho_s,
+        config.c_ps,
         config.ra,
         r_d,
         C1,
@@ -269,7 +541,7 @@ def generate_boiling_curve(config: PredictionConfig):
     output_path = Path(config.output_dir) / config.output_filename
     save(dT, q_Wcm2_array, output_path)
 
-    plot(config.exp_csv, config.sim_csv, output_path, config.output_dir)
+    plot(config.exp_csv, config.sim_csv, output_path, config.output_dir, config)
 
 
 def parse_args() -> argparse.Namespace:
@@ -294,7 +566,4 @@ if __name__ == "__main__":
         with open(args.config, "r") as f:
             config_dict = json.load(f)
         config = PredictionConfig.from_dict(config_dict)
-    else:
-        config = PredictionConfig()
-
-    generate_boiling_curve(config)
+        generate_boiling_curve(config)

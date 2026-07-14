@@ -1,0 +1,23 @@
+{
+    "name": "betz2010",
+    "output_dir" : "outputs/predictions/betz2010",
+    "output_filename" : "ann.csv",
+
+    "exp_csv": "data/experiment/betz2010_ex.csv",
+    "sim_csv": "data/automata/betz2010_sim_benjamin.csv",
+
+    "sigma": 0.0589,
+    "g": 9.81,
+    "rho_l": 958.0,
+    "rho_v": 0.597,
+
+    "phi_deg": 17.5,
+    "k_s": 1.4,
+    "rho_s": 2330,
+    "c_ps": 700,
+    "ra": 0.005e-6,
+
+    "q_min_wcm2": 1.0,
+    "q_max_wcm2": 150.0,
+    "n_points": 250 
+}

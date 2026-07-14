@@ -1,0 +1,21 @@
+ {
+    "name": "chang2019",
+    "output_dir": "outputs/predictions/chang2019",
+    "output_filename": "ann.csv",
+    "exp_csv": "data/experiment/chang2019_ex.csv",
+    "sim_csv": "data/automata/chang2019_sim_benjamin.csv",
+    "sigma": 0.0589,
+    "g": 9.81,
+    "rho_l": 958.0,
+    "rho_v": 0.597,
+
+    "phi_deg": 60,
+    "k_s": 393,
+    "rho_s": 8960,
+    "c_ps": 385,
+    "ra": 5.0e-8,
+
+    "q_min_wcm2": 1.0,
+    "q_max_wcm2": 150.0,
+    "n_points": 250
+}

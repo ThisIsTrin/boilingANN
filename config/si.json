@@ -1,0 +1,23 @@
+{
+    "name": "si",
+    "output_dir" : "outputs/predictions/si",
+    "output_filename" : "ann.csv",
+
+    "exp_csv": "data/experiment/si_ex.csv",
+    "sim_csv": "data/automata/si_sim_benjamin.csv",
+
+    "sigma": 0.0589,
+    "g": 9.81,
+    "rho_l": 958.0,
+    "rho_v": 0.597,
+
+    "phi_deg": 70,
+    "k_s": 1.4,
+    "rho_s": 2330,
+    "c_ps": 700,
+    "ra": 5.0e-8,
+
+    "q_min_wcm2": 1.0,
+    "q_max_wcm2": 150.0,
+    "n_points": 250 
+}

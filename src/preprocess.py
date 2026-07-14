@@ -9,7 +9,7 @@ from typing import Tuple
 
 
 def split_data(df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]:
-    df["delta_T_bin"] = pd.qcut(df["delta_T"], q=10, labels=False, duplicates="drop")
+    df["delta_T_bin"] = pd.qcut(df["delta_T"], q=5, labels=False, duplicates="drop")
 
     df["group_id"] = (
         df["phi"].astype(str) + "_" + df["material"] + "_" + df["ra"].astype(str)
@@ -35,7 +35,19 @@ def main():
     df = pd.read_csv("data/raw/simulation_dataset.csv")
     df.head()
 
-    FEATURES = ["phi", "gamma", "log_q", "log_ra", "r_d", "C1", "bubble_vol_factor"]
+    # FEATURES = ["phi", "gamma", "log_q", "log_ra", "r_d", "C1", "bubble_vol_factor"]
+    # FEATURES = ["phi", "log_q", "log_ra", "r_d", "C1", "bubble_vol_factor"]
+    FEATURES = [
+        "phi",
+        "k_s",
+        "rho_s",
+        "c_ps",
+        "log_q",
+        "log_ra",
+        "r_d",
+        "C1",
+        "bubble_vol_factor",
+    ]
     TARGET = "log_delta_T"
     TARGET_RAW = "delta_T"
 
@@ -79,5 +91,5 @@ def main():
         json.dump(FEATURES, f)
 
 
-if __name__ == "main":
+if __name__ == "__main__":
     main()

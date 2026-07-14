@@ -1,4 +1,3 @@
-from dataclasses import dataclass
 import numpy as np
 import torch
 import pickle
@@ -8,7 +7,6 @@ from torch.utils.data import DataLoader, TensorDataset
 from model import BoilingANN
 import os
 import matplotlib.pyplot as plt
-import pandas as pd
 
 
 def load_data():
@@ -206,6 +204,26 @@ def _plot_results(train_losses, val_losses, y_val_raw, val_pred_raw, val_mape):
         y_val_raw, val_pred_raw, c=np.log10(y_val_raw), cmap="viridis", alpha=0.4, s=10
     )
     plt.colorbar(sc, ax=ax, label="log10(q'' true)")
+
+
+def _plot_results(train_losses, val_losses, y_val_raw, val_pred_raw, val_mape):
+    fig, axes = plt.subplots(1, 3, figsize=(15, 5))
+
+    # Loss curves
+    axes[0].plot(train_losses, label="Train", alpha=0.8, linewidth=0.8)
+    axes[0].plot(val_losses, label="Val", alpha=0.8, linewidth=0.8)
+    axes[0].set_xlabel("Epoch")
+    axes[0].set_ylabel("MSE Loss (log scale)")
+    axes[0].set_yscale("log")
+    axes[0].set_title("Training Loss Curves")
+    axes[0].legend()
+
+    # Validation parity plot
+    ax = axes[1]
+    sc = ax.scatter(
+        y_val_raw, val_pred_raw, c=np.log10(y_val_raw), cmap="viridis", alpha=0.4, s=10
+    )
+    plt.colorbar(sc, ax=ax, label="log10(q'' true)")
     lo = min(y_val_raw.min(), val_pred_raw.min()) * 0.9
     hi = max(y_val_raw.max(), val_pred_raw.max()) * 1.1
     ax.plot([lo, hi], [lo, hi], "k--", lw=1.5, label="Perfect")
@@ -235,14 +253,6 @@ def _plot_results(train_losses, val_losses, y_val_raw, val_pred_raw, val_mape):
     plt.savefig("results/training_results.png", dpi=150)
     plt.show()
     print("Plot saved: results/training_results.png")
-
-    pd.DataFrame(
-        {
-            "epoch": range(len(train_losses)),
-            "train_loss": train_losses,
-            "val_loss": val_losses,
-        }
-    ).to_csv("results/loss_history.csv", index=False)
 
 
 if __name__ == "__main__":

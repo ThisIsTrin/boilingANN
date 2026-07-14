@@ -1,0 +1,21 @@
+{
+    "name": "li2014",
+    "output_dir": "outputs/predictions/li2014",
+    "output_filename": "ann.csv",
+    "exp_csv": "data/experiment/li2014_ex.csv",
+    "sim_csv": "data/automata/li2014_sim_benjamin.csv",
+    "sigma": 0.0589,
+    "g": 9.81,
+    "rho_l": 958.0,
+    "rho_v": 0.597,
+
+    "phi_deg": 85,
+    "k_s": 393,
+    "rho_s": 8960,
+    "c_ps": 385,
+    "ra": 0.197e-6,
+
+    "q_min_wcm2": 1.0,
+    "q_max_wcm2": 100.0,
+    "n_points": 250
+}
