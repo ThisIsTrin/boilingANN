@@ -1,1 +1,8 @@
 data
+models
+outputs
+results
+.venv
+
+!data/raw/
+!data/raw/simulation_dataset.csv
