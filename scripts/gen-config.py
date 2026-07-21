@@ -44,6 +44,8 @@ CONTACT_ANGLES_DEG = [
 ]
 
 ROUGHNESS_RA_M = [0.01e-6, 0.05e-6, 0.1e-6, 0.5e-6, 1e-6, 5e-6]
+# ROUGHNESS_RA_M = [1e-9, 2e-9, 5e-9, 2e-8, 2e-7, 2e-6, 1e-5]
+# ROUGHNESS_RA_M = [0.44e-6]
 SEEDS = [0]
 
 
@@ -134,10 +136,10 @@ def build_config(
             "maximum_timesteps": max_timesteps,
         },
         "heater_automata": {
-            "cell_counts": (10, 10),
-            "cell_length": 0.002215,
+            "cell_counts": (16, 16),
+            "cell_length": 0.000625,
             "cell_thickness": CELL_THICKNESS_M,
-            "num_nucleation_points": 100,
+            "num_nucleation_points": 256,
             "heat_gen_initial": q_wm2,  # [W/m^2]
             "heat_gen_increase": 0,
             "heat_gen_interval": 123,
@@ -152,6 +154,11 @@ def build_config(
             "natural_convection_constant": 1.0,
             "microconvection_coefficient": 1.0,
             "surface_coalescence": False,
+            "coalescence_departure": {
+                "enabled": False,
+                "epsilon_threshold": 1.0,
+                "min_radius": 0.0,
+            },
             "nucleation_model": {
                 "name": "benjamin",
                 "surface_roughness_Ra": roughness_ra,

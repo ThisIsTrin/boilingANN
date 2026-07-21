@@ -145,7 +145,6 @@ def feature_dataframe(
     q_Wcm2_array,
     features,
     phi_deg,
-    gamma,
     k_s,
     rho_s,
     c_ps,
@@ -158,11 +157,11 @@ def feature_dataframe(
     df = pd.DataFrame(
         {
             "phi": phi_deg,
-            "gamma": gamma,
             "k_s": k_s,
             "rho_s": rho_s,
             "c_ps": c_ps,
             "log_q": np.log10(q_Wcm2_array),
+            # "q_Wcm2": q_Wcm2_array,
             "log_ra": np.log10(ra),
             "r_d": r_d,
             "C1": C1,
@@ -181,11 +180,9 @@ def predict(feature_df, model, scaler_x, scaler_y):
     # Gen predictions
     with torch.no_grad():
         pred_scaled = model(x_tensor).numpy()
-
     # Inverse scale and log scale
     log_dT = scaler_y.inverse_transform(pred_scaled.reshape(-1, 1)).ravel()
     dT = 10**log_dT
-
     return dT
 
 
@@ -511,22 +508,10 @@ def generate_boiling_curve(config: PredictionConfig):
         np.log10(config.q_min_wcm2), np.log10(config.q_max_wcm2), config.n_points
     )
 
-    # feature_df = feature_dataframe(
-    #     q_Wcm2_array,
-    #     feature_names,
-    #     config.phi_deg,
-    #     config.gamma,
-    #     config.ra,
-    #     r_d,
-    #     C1,
-    #     bubble_vol_factor,
-    # )
-
     feature_df = feature_dataframe(
         q_Wcm2_array,
         feature_names,
         config.phi_deg,
-        config.gamma,
         config.k_s,
         config.rho_s,
         config.c_ps,

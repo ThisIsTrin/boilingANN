@@ -8,22 +8,39 @@ import json
 from typing import Tuple
 
 
-def split_data(df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]:
-    df["delta_T_bin"] = pd.qcut(df["delta_T"], q=5, labels=False, duplicates="drop")
-
+def split_data(
+    df: pd.DataFrame, test_size: float = 0.2, random_state: int = 67
+) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    df = df.copy()
     df["group_id"] = (
         df["phi"].astype(str) + "_" + df["material"] + "_" + df["ra"].astype(str)
     )
 
-    unique_groups = df["group_id"].unique()
-    group_bins = df.groupby("group_id")["delta_T_bin"].agg(lambda x: x.mode()[0])
+    # One row per group, tagged with the (material, phi) it belongs to.
+    group_meta = (
+        df.groupby("group_id")
+        .agg(material=("material", "first"), phi=("phi", "first"))
+        .reset_index()
+    )
+    group_meta["stratum"] = group_meta["material"] + "_" + group_meta["phi"].astype(str)
+
+    # Strata with only 1 group can't be split by sklearn's stratify — keep those in train.
+    counts = group_meta["stratum"].value_counts()
+    safe = group_meta["stratum"].isin(counts[counts >= 2].index)
 
     train_groups, val_groups = train_test_split(
-        unique_groups, test_size=0.2, stratify=group_bins, random_state=67
+        group_meta.loc[safe, "group_id"],
+        test_size=test_size,
+        stratify=group_meta.loc[safe, "stratum"],
+        random_state=random_state,
     )
+    train_groups = pd.concat([train_groups, group_meta.loc[~safe, "group_id"]])
 
     train_df = df[df["group_id"].isin(train_groups)].reset_index(drop=True)
     val_df = df[df["group_id"].isin(val_groups)].reset_index(drop=True)
+
+    train_df.to_csv("data/train.csv", index=False)
+    val_df.to_csv("data/validation.csv", index=False)
 
     return train_df, val_df
 
@@ -33,8 +50,6 @@ def main():
 
     # Header: phi|gamma|ra|q_vol|q_Wm2|q_Wm2|material|seed|log_q|log_ra|r_d|C1|C3|bubble_vol_factor|q_star|delta_T|log_delta_T|HTC|log_HTC|T_wall_ss|T_wall_std|n_sites_ss|q_out_ss|q_mc_ss|q_me_ss|q_nc_ss|q_rad_ss|br_ss|sim_name
     df = pd.read_csv("data/raw/simulation_dataset.csv")
-    df.head()
-
     # FEATURES = ["phi", "gamma", "log_q", "log_ra", "r_d", "C1", "bubble_vol_factor"]
     # FEATURES = ["phi", "log_q", "log_ra", "r_d", "C1", "bubble_vol_factor"]
     FEATURES = [
@@ -43,6 +58,7 @@ def main():
         "rho_s",
         "c_ps",
         "log_q",
+        # "q_Wcm2",
         "log_ra",
         "r_d",
         "C1",

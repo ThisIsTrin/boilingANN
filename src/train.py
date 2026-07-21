@@ -203,27 +203,7 @@ def _plot_results(train_losses, val_losses, y_val_raw, val_pred_raw, val_mape):
     sc = ax.scatter(
         y_val_raw, val_pred_raw, c=np.log10(y_val_raw), cmap="viridis", alpha=0.4, s=10
     )
-    plt.colorbar(sc, ax=ax, label="log10(q'' true)")
-
-
-def _plot_results(train_losses, val_losses, y_val_raw, val_pred_raw, val_mape):
-    fig, axes = plt.subplots(1, 3, figsize=(15, 5))
-
-    # Loss curves
-    axes[0].plot(train_losses, label="Train", alpha=0.8, linewidth=0.8)
-    axes[0].plot(val_losses, label="Val", alpha=0.8, linewidth=0.8)
-    axes[0].set_xlabel("Epoch")
-    axes[0].set_ylabel("MSE Loss (log scale)")
-    axes[0].set_yscale("log")
-    axes[0].set_title("Training Loss Curves")
-    axes[0].legend()
-
-    # Validation parity plot
-    ax = axes[1]
-    sc = ax.scatter(
-        y_val_raw, val_pred_raw, c=np.log10(y_val_raw), cmap="viridis", alpha=0.4, s=10
-    )
-    plt.colorbar(sc, ax=ax, label="log10(q'' true)")
+    plt.colorbar(sc, ax=ax, label="log10(dT true)")
     lo = min(y_val_raw.min(), val_pred_raw.min()) * 0.9
     hi = max(y_val_raw.max(), val_pred_raw.max()) * 1.1
     ax.plot([lo, hi], [lo, hi], "k--", lw=1.5, label="Perfect")
@@ -231,8 +211,8 @@ def _plot_results(train_losses, val_losses, y_val_raw, val_pred_raw, val_mape):
     ax.plot(
         [lo, hi], [x * 0.85 for x in [lo, hi]], "r--", lw=1, alpha=0.6, label="±15%"
     )
-    ax.set_xlabel("Simulation Q'' (Wcm2)")
-    ax.set_ylabel("ANN predicted Q'' (Wcm2)")
+    ax.set_xlabel("Simulation dT")
+    ax.set_ylabel("ANN predicted dT")
     ax.set_title(f"Validation Parity\nMAPE = {val_mape:.2f}%")
     ax.legend(fontsize=8)
 
